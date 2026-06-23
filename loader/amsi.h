@@ -32,6 +32,7 @@
 #ifndef AMSI_H
 #define AMSI_H
 
+#ifdef BYPASS_AMSI_D
 #include <windows.h>
 
 DECLARE_HANDLE(HAMSICONTEXT);
@@ -178,5 +179,7 @@ typedef struct tagHAMSICONTEXT {
     IAntimalware *Antimalware;       // set by AmsiInitialize
     DWORD        SessionCount;       // increased by AmsiOpenSession
 } _HAMSICONTEXT, *_PHAMSICONTEXT;
+
+#endif
 
 #endif

@@ -1,0 +1,11 @@
+C:\Users\User\source\repos\DonutC#\DonutC#\bin\Debug\DonutCsharp.exe.config
+C:\Users\User\source\repos\DonutC#\DonutC#\bin\Debug\DonutCsharp.exe
+C:\Users\User\source\repos\DonutC#\DonutC#\bin\Debug\DonutCsharp.pdb
+C:\Users\User\source\repos\DonutC#\DonutC#\obj\Debug\DonutC#.csproj.AssemblyReference.cache
+C:\Users\User\source\repos\DonutC#\DonutC#\obj\Debug\DonutCsharp.Properties.Resources.resources
+C:\Users\User\source\repos\DonutC#\DonutC#\obj\Debug\DonutC#.csproj.GenerateResource.cache
+C:\Users\User\source\repos\DonutC#\DonutC#\obj\Debug\DonutC#.csproj.CoreCompileInputs.cache
+C:\Users\User\source\repos\DonutC#\DonutC#\obj\Debug\DonutC#.csproj.Fody.CopyLocal.cache
+C:\Users\User\source\repos\DonutC#\DonutC#\obj\Debug\DonutC#.csproj.Fody.RuntimeCopyLocal.cache
+C:\Users\User\source\repos\DonutC#\DonutC#\obj\Debug\DonutCsharp.exe
+C:\Users\User\source\repos\DonutC#\DonutC#\obj\Debug\DonutCsharp.pdb

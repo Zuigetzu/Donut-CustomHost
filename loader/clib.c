@@ -31,6 +31,7 @@
 
 #include <inttypes.h>
 #include <stddef.h>
+#include "wintypes.h" 
 
 // functions to replace intrinsic C library functions
 
@@ -109,6 +110,8 @@ int _strcmp(const char *str1, const char *str2) {
     So I am crediting them via comment instead.
 
 */
+
+
 
 int stricmp(const char *str1, const char *str2) {
     while (*str1 && *str2) {

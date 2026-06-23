@@ -1,0 +1,11 @@
+C:\Users\User\source\repos\DonutC2\DonutC2\obj\Debug\DonutC2.csproj.AssemblyReference.cache
+C:\Users\User\source\repos\DonutC2\DonutC2\obj\Debug\DonutC2.Properties.Resources.resources
+C:\Users\User\source\repos\DonutC2\DonutC2\obj\Debug\DonutC2.csproj.GenerateResource.cache
+C:\Users\User\source\repos\DonutC2\DonutC2\obj\Debug\DonutC2.csproj.CoreCompileInputs.cache
+C:\Users\User\source\repos\DonutC2\DonutC2\obj\Debug\DonutC2.exe
+C:\Users\User\source\repos\DonutC2\DonutC2\obj\Debug\DonutC2.pdb
+C:\Users\User\source\repos\DonutC2\DonutC2\bin\Debug\DonutC2.exe.config
+C:\Users\User\source\repos\DonutC2\DonutC2\bin\Debug\DonutC2.exe
+C:\Users\User\source\repos\DonutC2\DonutC2\bin\Debug\DonutC2.pdb
+C:\Users\User\source\repos\DonutC2\DonutC2\obj\Debug\DonutC2.csproj.Fody.CopyLocal.cache
+C:\Users\User\source\repos\DonutC2\DonutC2\obj\Debug\DonutC2.csproj.Fody.RuntimeCopyLocal.cache

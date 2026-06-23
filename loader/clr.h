@@ -45,8 +45,22 @@
     typedef struct _Binder                  IBinder;
     typedef struct _MethodInfo              IMethodInfo;
     
+    // Own types
+    typedef struct _ICLRRuntimeHost         ICLRRuntimeHost;
+    typedef struct _ICLRAssemblyIdentityManager ICLRAssemblyIdentityManager;
+
+    typedef struct _MyAssemblyStore             MyAssemblyStore;
+    typedef struct _MyAssemblyManager           MyAssemblyManager;
+    typedef struct _MemoryManager               MemoryManager;
+    typedef struct _MyHostControl               MyHostControl;
+    typedef struct _DONUT_INSTANCE DONUT_INSTANCE, *PDONUT_INSTANCE;
+
     typedef void *HDOMAINENUM;
-    
+
+    typedef IStream (__stdcall *SHCreateMemStreamFnPtr)(
+        const               BYTE *pInit,
+        UINT                cbInit);
+
     typedef HRESULT ( __stdcall *CLRCreateInstanceFnPtr )( 
         REFCLSID clsid,
         REFIID riid,
@@ -161,7 +175,13 @@
         DUMMY_METHOD(CreateInstance_3);
         DUMMY_METHOD(CreateInstanceFrom_3);
         DUMMY_METHOD(Load);
-        DUMMY_METHOD(Load_2);
+        //DUMMY_METHOD(Load_2);
+
+        HRESULT(STDMETHODCALLTYPE* Load_2) (
+          IAppDomain* This,
+          BSTR assemblyString, 
+          IAssembly** pRetVal
+        );
         
         HRESULT (STDMETHODCALLTYPE *Load_3)(
           IAppDomain *This,
@@ -911,6 +931,351 @@
     typedef struct _IDebuggerThreadControl {
        IDebuggerThreadControlVtbl *lpVtbl;
     } IDebuggerThreadControl;
+
+    // Own Vtablaes
+
+    typedef struct ICLRRuntimeHostVtbl 
+    {
+        BEGIN_INTERFACE
+
+        HRESULT ( STDMETHODCALLTYPE *QueryInterface )( 
+            ICLRRuntimeHost * This,
+            /* [in] */ REFIID riid,
+            /* [annotation][iid_is][out] */ 
+            _COM_Outptr_  void **ppvObject);
+
+        ULONG ( STDMETHODCALLTYPE *AddRef )( 
+            ICLRRuntimeHost * This);
+
+        ULONG ( STDMETHODCALLTYPE *Release )( 
+            ICLRRuntimeHost * This);
+        
+        HRESULT ( STDMETHODCALLTYPE *Start )( 
+            ICLRRuntimeHost * This);
+
+        HRESULT ( STDMETHODCALLTYPE *Stop )( 
+            ICLRRuntimeHost * This);
+
+        HRESULT ( STDMETHODCALLTYPE *SetHostControl )( 
+            ICLRRuntimeHost * This,
+            /* [in] */ void *pHostControl);
+
+        HRESULT ( STDMETHODCALLTYPE *GetCLRControl )( 
+            ICLRRuntimeHost * This,
+            /* [out] */ void **pCLRControl);
+
+         HRESULT ( STDMETHODCALLTYPE *UnloadAppDomain )( 
+            ICLRRuntimeHost * This,
+            /* [in] */ DWORD dwAppDomainId,
+            /* [in] */ BOOL fWaitUntilDone);
+
+        HRESULT ( STDMETHODCALLTYPE *ExecuteInAppDomain )( 
+            ICLRRuntimeHost * This,
+            /* [in] */ DWORD dwAppDomainId,
+            /* [in] */ void* pCallback,
+            /* [in] */ void *cookie);
+
+        HRESULT ( STDMETHODCALLTYPE *GetCurrentAppDomainId )( 
+            ICLRRuntimeHost * This,
+            /* [out] */ DWORD *pdwAppDomainId);
+            
+        HRESULT ( STDMETHODCALLTYPE *ExecuteApplication )( 
+            ICLRRuntimeHost * This,
+            /* [in] */ LPCWSTR pwzAppFullName,
+            /* [in] */ DWORD dwManifestPaths,
+            /* [in] */ LPCWSTR *ppwzManifestPaths,
+            /* [in] */ DWORD dwActivationData,
+            /* [in] */ LPCWSTR *ppwzActivationData,
+            /* [out] */ int *pReturnValue);
+
+        HRESULT ( STDMETHODCALLTYPE *ExecuteInDefaultAppDomain )( 
+            ICLRRuntimeHost * This,
+            /* [in] */ LPCWSTR pwzAssemblyPath,
+            /* [in] */ LPCWSTR pwzTypeName,
+            /* [in] */ LPCWSTR pwzMethodName,
+            /* [in] */ LPCWSTR pwzArgument,
+            /* [out] */ DWORD *pReturnValue);
+            
+        END_INTERFACE
+    } ICLRRuntimeHostVtbl;
+
+    typedef struct _ICLRRuntimeHost {
+        ICLRRuntimeHostVtbl *lpVtbl;
+    } ICLRRuntimeHost;
+
+
+    #undef DUMMY_METHOD
+    #define DUMMY_METHOD(x) HRESULT ( STDMETHODCALLTYPE *dummy_##x )(ICLRAssemblyIdentityManager *This)
+
+    typedef struct ICLRAssemblyIdentityManagerVtbl 
+    {
+        BEGIN_INTERFACE
+
+        HRESULT ( STDMETHODCALLTYPE *QueryInterface )( 
+            ICLRAssemblyIdentityManager * This,
+            /* [in] */ REFIID riid,
+            /* [annotation][iid_is][out] */ 
+            _COM_Outptr_  void **ppvObject);
+
+       ULONG ( STDMETHODCALLTYPE *AddRef )( 
+            ICLRAssemblyIdentityManager * This);
+
+        ULONG ( STDMETHODCALLTYPE *Release )( 
+            ICLRAssemblyIdentityManager * This);
+        
+        DUMMY_METHOD(GetCLRAssemblyReferenceList);
+
+        HRESULT ( STDMETHODCALLTYPE *GetBindingIdentityFromFile )( 
+            ICLRAssemblyIdentityManager * This,
+            /* [in] */ LPCWSTR pwzFilePath,
+            /* [in] */ DWORD dwFlags,
+            /* [annotation][size_is][out] */ 
+            _Out_writes_all_(*pcchBufferSize)  LPWSTR pwzBuffer,
+            /* [out][in] */ DWORD *pcchBufferSize);
+
+        HRESULT ( STDMETHODCALLTYPE *GetBindingIdentityFromStream )( 
+            ICLRAssemblyIdentityManager * This,
+            /* [in] */ IStream *pStream,
+            /* [in] */ DWORD dwFlags,
+            /* [annotation][size_is][out] */ 
+            _Out_writes_all_(*pcchBufferSize)  LPWSTR pwzBuffer,
+            /* [out][in] */ DWORD *pcchBufferSize);
+        
+        DUMMY_METHOD(GetReferencedAssembliesFromFile);
+        DUMMY_METHOD(GetReferencedAssembliesFromStream);
+        DUMMY_METHOD(GetProbingAssembliesFromReference);
+        DUMMY_METHOD(IsStronglyNamed);
+
+        END_INTERFACE
+    } ICLRAssemblyIdentityManagerVtbl;
+
+    typedef struct _ICLRAssemblyIdentityManager {
+        ICLRAssemblyIdentityManagerVtbl *lpVtbl;
+    } ICLRAssemblyIdentityManager;
+
+       // Prototipos dinámicos
+    typedef HRESULT (__stdcall* CLRIdentityManagerProc_t)(
+        REFIID, IUnknown**);
+
+    // =========================================================================
+    // DEFINICIONES DE CUSTOM HOST Y BINDING INFO (Añadido para el Payload .NET)
+    // =========================================================================
+    typedef struct _AssemblyBindInfo {
+        DWORD dwAppDomainId;
+        LPCWSTR lpReferencedIdentity;
+        LPCWSTR lpPostPolicyIdentity;
+        DWORD ePolicyLevel;
+    } AssemblyBindInfo;
+
+    typedef struct _ModuleBindInfo {
+        DWORD dwAppDomainId;
+        LPCWSTR lpAssemblyIdentity;
+        LPCWSTR lpModuleName;
+    } ModuleBindInfo;
+
+    typedef enum {
+        eTaskCritical = 0,
+        eAppDomainCritical = 1,
+        eProcessCritical = 2
+    } EMemoryCriticalLevel;
+
+    typedef struct __TargetAssembly {
+        LPWSTR assemblyInfo;
+        unsigned char* assemblyBytes;
+        DWORD assemblySize;
+    } TargetAssembly;
+
+    typedef struct _MyAssemblyStoreVtbl 
+    {
+        BEGIN_INTERFACE
+
+        HRESULT(STDMETHODCALLTYPE* QueryInterface)(MyAssemblyStore* This, REFIID riid, void** ppvObject);
+
+        ULONG(STDMETHODCALLTYPE* AddRef)(
+            MyAssemblyStore* This);
+
+        ULONG(STDMETHODCALLTYPE* Release)(
+            MyAssemblyStore* This);
+
+        HRESULT(STDMETHODCALLTYPE* ProvideAssembly)(
+            MyAssemblyStore* This, 
+            AssemblyBindInfo* pBindInfo, 
+            UINT64* pAssemblyId, 
+            UINT64* pContext, 
+            IStream** ppStmAssemblyImage, 
+            IStream** ppStmPDB);
+
+        HRESULT(STDMETHODCALLTYPE* ProvideModule)(
+            MyAssemblyStore* This, 
+            ModuleBindInfo* pBindInfo, 
+            DWORD* pdwModuleId, 
+            IStream** ppStmModuleImage, 
+            IStream** ppStmPDB);
+
+        END_INTERFACE
+    } MyAssemblyStoreVtbl;
+
+    typedef struct _MyAssemblyStore {
+        MyAssemblyStoreVtbl* lpVtbl;
+        TargetAssembly* targetAssembly;
+        DWORD count;
+        PDONUT_INSTANCE inst;
+    } MyAssemblyStore;
+
+   typedef struct _MyAssemblyManagerVtbl 
+   {
+        BEGIN_INTERFACE
+
+        HRESULT(STDMETHODCALLTYPE* QueryInterface)(
+            MyAssemblyManager* This, 
+            REFIID riid, 
+            void** ppvObject);
+            
+        ULONG(STDMETHODCALLTYPE* AddRef)(
+            MyAssemblyManager* This);
+
+        ULONG(STDMETHODCALLTYPE* Release)(
+            MyAssemblyManager* This);
+
+        HRESULT(STDMETHODCALLTYPE* GetNonHostStoreAssemblies)(
+            MyAssemblyManager* This, 
+            void** ppReferenceList);
+
+        HRESULT(STDMETHODCALLTYPE* GetAssemblyStore)(
+            MyAssemblyManager* This, 
+            void** ppAssemblyStore);
+
+        END_INTERFACE
+    } MyAssemblyManagerVtbl;
+
+    typedef struct _MyAssemblyManager {
+        MyAssemblyManagerVtbl* lpVtbl;
+        void* assemblyStore;
+        TargetAssembly* targetAssembly;
+        DWORD count;
+        PDONUT_INSTANCE inst;
+    } MyAssemblyManager;
+
+    typedef struct _MemoryManagerVtbl 
+    {
+        BEGIN_INTERFACE
+        
+        HRESULT(STDMETHODCALLTYPE* QueryInterface)(
+            MemoryManager* This, 
+            REFIID riid, 
+            void** ppvObject);
+
+        ULONG(STDMETHODCALLTYPE* AddRef)(
+            MemoryManager* This);
+
+        ULONG(STDMETHODCALLTYPE* Release)(
+            MemoryManager* This);
+
+        HRESULT(STDMETHODCALLTYPE* CreateMalloc)(
+            MemoryManager* This, 
+            DWORD dwMallocType, 
+            void** ppMalloc);
+
+        HRESULT(STDMETHODCALLTYPE* VirtualAlloc)(
+            MemoryManager* This, 
+            void* pAddress, 
+            SIZE_T dwSize, 
+            DWORD flAllocationType, 
+            DWORD flProtect, 
+            EMemoryCriticalLevel eCriticalLevel, 
+            void** ppMem);
+
+        HRESULT(STDMETHODCALLTYPE* VirtualFree)(
+            MemoryManager* This, 
+            LPVOID lpAddress, 
+            SIZE_T dwSize, 
+            DWORD dwFreeType);
+
+        HRESULT(STDMETHODCALLTYPE* VirtualQuery)(
+            MemoryManager* This, 
+            void* lpAddress, 
+            void* lpBuffer, 
+            SIZE_T dwLength, 
+            SIZE_T* pResult);
+
+        HRESULT(STDMETHODCALLTYPE* VirtualProtect)(
+            MemoryManager* This, 
+            void* lpAddress, 
+            SIZE_T dwSize, 
+            DWORD flNewProtect, 
+            DWORD* pflOldProtect);
+
+        HRESULT(STDMETHODCALLTYPE* GetMemoryLoad)(
+            MemoryManager* This, 
+            DWORD* pMemoryLoad, 
+            SIZE_T* pAvailableBytes);
+
+        HRESULT(STDMETHODCALLTYPE* RegisterMemoryNotificationCallback)(
+            MemoryManager* This, 
+            void* pCallback);
+
+        HRESULT(STDMETHODCALLTYPE* NeedsVirtualAddressSpace)(
+            MemoryManager* This, 
+            LPVOID startAddress, 
+            SIZE_T size);
+
+        HRESULT(STDMETHODCALLTYPE* AcquiredVirtualAddressSpace)(
+            MemoryManager* This, 
+            LPVOID startAddress, 
+            SIZE_T size);
+
+        HRESULT(STDMETHODCALLTYPE* ReleasedVirtualAddressSpace)(
+            MemoryManager* This, 
+            LPVOID startAddress);
+
+        END_INTERFACE
+    } MemoryManagerVtbl;
+
+    typedef struct _MemoryManager {
+        MemoryManagerVtbl* lpVtbl;
+        DWORD count;
+        PDONUT_INSTANCE inst;
+    } MemoryManager;
+
+    typedef struct _MyHostControlVtbl 
+    {
+        BEGIN_INTERFACE
+
+        HRESULT(STDMETHODCALLTYPE* QueryInterface)(
+            MyHostControl* This, 
+            REFIID riid, 
+            void** ppvObject);
+
+        ULONG(STDMETHODCALLTYPE* AddRef)(
+            MyHostControl* This);
+
+        ULONG(STDMETHODCALLTYPE* Release)(
+            MyHostControl* This);
+
+        HRESULT(STDMETHODCALLTYPE* GetHostManager)(
+            MyHostControl* This, 
+            REFIID riid, 
+            void** ppObject);
+
+        HRESULT(STDMETHODCALLTYPE* SetAppDomainManager)(
+            MyHostControl* This, 
+            DWORD dwAppDomainID, 
+            IUnknown* pUnkAppDomainManager);
+
+        END_INTERFACE
+    } MyHostControlVtbl;
+
+    typedef struct _MyHostControl {
+        MyHostControlVtbl* lpVtbl;
+        TargetAssembly* targetAssembly;
+        MemoryManager* memoryManager;
+        DWORD count;
+        PDONUT_INSTANCE inst;
+    } MyHostControl;
     
+    typedef enum _CLRAssemblyIdentityFlags {  
+        CLR_ASSEMBLY_IDENTITY_FLAGS_DEFAULT = 0  
+    } ECLRAssemblyIdentityFlags;
+
 #endif
   

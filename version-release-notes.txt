@@ -44,3 +44,10 @@
   * Fix mingw gcc builds (MEhrn00)
   * Cast Donut_Create to PyCFunction to fix python module (jsf9k)
   * Added a GitHub Action to build the Python package and push to PyPi
+* v1.2 (Major OPSEC Update)  
+  * Implemented an advanced Custom CLR Host (AssemblyStore and MemoryManager) to silently load .NET assemblies directly from memory, bypassing Fusion loader ETW telemetry entirely.  
+  * Replaced the standard ETW bypass with an architecture-aware Tail-Jump (JMP).  
+  * Removed legacy AMSI/WLDP VirtualProtect memory patches to minimize suspicious memory telemetry and maintain a pristine footprint.  
+  * Fixed a major padding bug in donut.c payload generation by using offsetof() instead of sizeof(), saving \~1.3 KB of dead memory (null bytes) per shellcode.  
+  * Standardized and fixed the C, Go (CGO), and C\# (P/Invoke) host templates inside the lib/ directory to consume the Donut static/dynamic libraries flawlessly.  
+  * Added Costura.Fody integration for the C\# generator wrapper to seamlessly produce a single, standalone executable.
